@@ -51,9 +51,11 @@ export default class Workspaces extends React.Component<WorkspacesProps, Workspa
         });
     }
 
-    protected showStartWSModal = () => this.setState({
-        isTemplateModelOpen: true
-    });
+    protected showStartWSModal = () => {
+        this.setState({
+            isTemplateModelOpen: true
+        });
+    }
 
     protected hideStartWSModal = () => this.setState({
         isTemplateModelOpen: false

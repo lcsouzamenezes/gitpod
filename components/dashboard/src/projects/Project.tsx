@@ -65,7 +65,7 @@ export default function () {
         const entries: ContextMenuEntry[] = [];
         entries.push({
             title: "Rerun Prebuild",
-            onClick: () => triggerPrebuild(branch),
+            onClick: () => triggerPrebuild(branch)
         });
         return entries;
     }

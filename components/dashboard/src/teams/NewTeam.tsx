@@ -13,7 +13,7 @@ export default function () {
     const { setTeams } = useContext(TeamsContext);
     const history = useHistory();
 
-    const [ creationError, setCreationError ] = useState<Error>();
+    const [creationError, setCreationError] = useState<Error>();
     let name = '';
     const createTeam = async (event: FormEvent) => {
         event.preventDefault();

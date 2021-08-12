@@ -18,6 +18,7 @@ import NoAccess from "../icons/NoAccess.svg";
 import search from "../icons/search.svg";
 import moment from "moment";
 import { UserContext } from "../user-context";
+import { trackEvent } from "../Analytics";
 
 export default function NewProject() {
     const location = useLocation();
@@ -143,6 +144,10 @@ export default function NewProject() {
             account: selectedAccount,
             onSuccess: (p: { installationId: string, setupAction?: string }) => {
                 updateReposInAccounts(p.installationId);
+                trackEvent("organisation_authorised", {
+                    installation_id: p.installationId,
+                    setup_action: p.setupAction
+                });
             }
         });
     }
@@ -206,7 +211,7 @@ export default function NewProject() {
             <span className={"pl-2 text-gray-600 dark:text-gray-100 text-base " + (addClasses || "")}>{label}</span>
         </div>)
         const result: ContextMenuEntry[] = [];
-        for (const [ account, props ] of accounts.entries()) {
+        for (const [account, props] of accounts.entries()) {
             result.push({
                 title: account,
                 customContent: renderItemContent(account, props.avatarUrl, "font-semibold"),
@@ -219,13 +224,17 @@ export default function NewProject() {
                 title: "Add another GitHub account",
                 customContent: renderItemContent("Add GitHub Orgs or Account", Plus),
                 separator: true,
-                onClick: () => reconfigure(),
+                onClick: () => {
+                    reconfigure();
+                }
             })
         }
         result.push({
             title: "Select another Git Provider to continue with",
             customContent: renderItemContent("Select Git Provider", Switch),
-            onClick: () => setShowGitProviders(true),
+            onClick: () => {
+                setShowGitProviders(true);
+            },
         })
 
         return result;
@@ -241,7 +250,7 @@ export default function NewProject() {
 
         const renderRepos = () => (<>
             <div className={`mt-10 border rounded-xl border-gray-100 dark:border-gray-800 flex-col`}>
-                <div className="px-8 pt-8 flex flex-col space-y-2">
+                <div className="px-8 pt-8 flex flex-col space-y-2" data-analytics='{"label":"Identity"}'>
                     <ContextMenu classes="w-full left-0 cursor-pointer" menuEntries={getDropDownEntries(accounts)}>
                         <div className="w-full">
                             {icon && (
@@ -272,7 +281,10 @@ export default function NewProject() {
                                     <div className="flex justify-end">
                                         <div className="h-full my-auto flex self-center opacity-0 group-hover:opacity-100">
                                             {!r.inUse ? (
-                                                <button className="primary" onClick={() => setSelectedRepo(r.name)}>Select</button>
+                                                <button className="primary" onClick={() => {
+                                                    setSelectedRepo(r.name);
+                                                }
+                                                }>Select</button>
                                             ) : (
                                                 <p className="my-auto">already taken</p>
                                             )}
@@ -299,19 +311,18 @@ export default function NewProject() {
                         </div>
                     </div>)}
                 </div>
-
             </div>
             {isGitHub() && (
-                    <div className="pt-3">
-                        <div className="text-gray-500 text-center w-96 mx-8">
-                            Repository not found? <a href="javascript:void(0)" onClick={e => reconfigure()} className="text-gray-400 underline underline-thickness-thin underline-offset-small hover:text-gray-600">Reconfigure</a>
-                        </div>
-                        {isGitHub() && noOrgs && (
-                            <div className="text-gray-500 mx-auto text-center">
-                                Missing organizations? <a href="javascript:void(0)" onClick={e => grantReadOrgPermissions()} className="text-gray-400 underline underline-thickness-thin underline-offset-small hover:text-gray-600">Grant permissions</a>
-                            </div>
-                        )}
+                <div className="pt-3">
+                    <div className="text-gray-500 text-center w-96 mx-8">
+                        Repository not found? <a href="javascript:void(0)" onClick={e => reconfigure()} className="text-gray-400 underline underline-thickness-thin underline-offset-small hover:text-gray-600">Reconfigure</a>
                     </div>
+                    {isGitHub() && noOrgs && (
+                        <div className="text-gray-500 mx-auto text-center">
+                            Missing organizations? <a href="javascript:void(0)" onClick={e => grantReadOrgPermissions()} className="text-gray-400 underline underline-thickness-thin underline-offset-small hover:text-gray-600">Grant permissions</a>
+                        </div>
+                    )}
+                </div>
             )}
         </>
         );

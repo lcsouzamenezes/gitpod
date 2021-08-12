@@ -28,8 +28,8 @@ export default function () {
 
     const { teams } = useContext(TeamsContext);
     const team = getCurrentTeam(location, teams);
-    const [ projects, setProjects ] = useState<Project[]>([]);
-    const [ lastPrebuilds, setLastPrebuilds ] = useState<Map<string, PrebuildWithStatus>>(new Map());
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [lastPrebuilds, setLastPrebuilds] = useState<Map<string, PrebuildWithStatus>>(new Map());
 
     const { isDark } = useContext(ThemeContext);
 
@@ -37,7 +37,7 @@ export default function () {
 
     useEffect(() => {
         updateProjects();
-    }, [ teams ]);
+    }, [teams]);
 
     const updateProjects = async () => {
         if (!teams) {
@@ -102,7 +102,7 @@ export default function () {
                 <p className="text-center text-base text-gray-500 mt-4">Add projects to enable and manage Prebuilds.<br /><a className="gp-link" href="https://www.gitpod.io/docs/prebuilds/">Learn more about Prebuilds</a></p>
                 <div className="flex space-x-2 justify-center mt-7">
                     <Link to={newProjectUrl}><button>New Project</button></Link>
-                    {team && <Link to="./members"><button className="secondary">Invite Members</button></Link>}
+                    {team && <Link to="./members"  ><button className="secondary">Invite Members</button></Link>}
                 </div>
             </div>
 
@@ -178,7 +178,7 @@ export default function () {
                     {!searchFilter && (
                         <div key="new-project"
                             className="h-52 border-dashed border-2 border-gray-100 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl focus:bg-gitpod-kumquat-light transition ease-in-out group">
-                            <Link to={newProjectUrl}>
+                            <Link to={newProjectUrl} data-analytics='{"button_type":"card"}'>
                                 <div className="flex h-full">
                                     <div className="m-auto text-gray-400 dark:text-gray-600">New Project</div>
                                 </div>

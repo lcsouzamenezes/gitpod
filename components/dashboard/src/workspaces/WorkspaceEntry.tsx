@@ -7,7 +7,7 @@
 import { CommitContext, Workspace, WorkspaceInfo, WorkspaceInstance, WorkspaceInstanceConditions, WorkspaceInstancePhase } from '@gitpod/gitpod-protocol';
 import { GitpodHostUrl } from '@gitpod/gitpod-protocol/lib/util/gitpod-host-url';
 import moment from 'moment';
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import ConfirmationModal from '../components/ConfirmationModal';
 import Modal from '../components/Modal';
 import { ContextMenuEntry } from '../components/ContextMenu';
@@ -78,17 +78,13 @@ export function WorkspaceEntry({ desc, model, isAdmin, stopWorkspace }: Props) {
             {
                 title: 'Share',
                 active: !!ws.shareable,
-                onClick: () => {
-                    model.toggleShared(ws.id);
-                }
+                onClick: () => model.toggleShared(ws.id)
             },
             {
                 title: 'Pin',
                 active: !!ws.pinned,
                 separator: true,
-                onClick: () => {
-                    model.togglePinned(ws.id);
-                }
+                onClick: () => model.togglePinned(ws.id)
             },
             {
                 title: 'Delete',

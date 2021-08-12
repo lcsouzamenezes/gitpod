@@ -17,19 +17,20 @@ import copy from '../images/copy.svg';
 import { getGitpodService } from "../service/service";
 import { UserContext } from "../user-context";
 import { TeamsContext, getCurrentTeam } from "./teams-context";
+import { trackEvent } from "../Analytics";
 
 
-export default function() {
+export default function () {
     const { user } = useContext(UserContext);
     const { teams, setTeams } = useContext(TeamsContext);
     const history = useHistory();
     const location = useLocation();
     const team = getCurrentTeam(location, teams);
-    const [ members, setMembers ] = useState<TeamMemberInfo[]>([]);
-    const [ genericInvite, setGenericInvite ] = useState<TeamMembershipInvite>();
-    const [ showInviteModal, setShowInviteModal ] = useState<boolean>(false);
-    const [ searchText, setSearchText ] = useState<string>('');
-    const [ roleFilter, setRoleFilter ] = useState<TeamMemberRole | undefined>();
+    const [members, setMembers] = useState<TeamMemberInfo[]>([]);
+    const [genericInvite, setGenericInvite] = useState<TeamMembershipInvite>();
+    const [showInviteModal, setShowInviteModal] = useState<boolean>(false);
+    const [searchText, setSearchText] = useState<string>('');
+    const [roleFilter, setRoleFilter] = useState<TeamMemberRole | undefined>();
 
     useEffect(() => {
         if (!team) {
@@ -43,7 +44,7 @@ export default function() {
             setMembers(infos);
             setGenericInvite(invite);
         })();
-    }, [ team ]);
+    }, [team]);
 
     const ownMemberInfo = members.find(m => m.userId === user?.id);
 
@@ -54,7 +55,7 @@ export default function() {
         return link.href;
     }
 
-    const [ copied, setCopied ] = useState<boolean>(false);
+    const [copied, setCopied] = useState<boolean>(false);
     const copyToClipboard = (text: string) => {
         const el = document.createElement("textarea");
         el.value = text;
@@ -101,7 +102,7 @@ export default function() {
         if (!!roleFilter && m.role !== roleFilter) {
             return false;
         }
-        const memberSearchText = `${m.fullName||''}${m.primaryEmail||''}`.toLocaleLowerCase();
+        const memberSearchText = `${m.fullName || ''}${m.primaryEmail || ''}`.toLocaleLowerCase();
         if (!memberSearchText.includes(searchText.toLocaleLowerCase())) {
             return false;
         }
@@ -114,7 +115,7 @@ export default function() {
             <div className="flex mt-8">
                 <div className="flex">
                     <div className="py-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16" width="16" height="16"><path fill="#A8A29E" d="M6 2a4 4 0 100 8 4 4 0 000-8zM0 6a6 6 0 1110.89 3.477l4.817 4.816a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 010 6z"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 16" width="16" height="16"><path fill="#A8A29E" d="M6 2a4 4 0 100 8 4 4 0 000-8zM0 6a6 6 0 1110.89 3.477l4.817 4.816a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 010 6z" /></svg>
                     </div>
                     <input type="search" placeholder="Search Members" onChange={e => setSearchText(e.target.value)} />
                 </div>
@@ -131,7 +132,13 @@ export default function() {
                         onClick: () => setRoleFilter('member')
                     }]} />
                 </div>
-                <button onClick={() => setShowInviteModal(true)} className="ml-2">Invite Members</button>
+                <button onClick={() => {
+                    trackEvent("invite_url_requested",{
+                        invite_url: getInviteURL(genericInvite!.id)
+                    });
+                    setShowInviteModal(true);
+                }
+                } className="ml-2">Invite Members</button>
             </div>
             <ItemsList className="mt-2">
                 <Item header={true} className="grid grid-cols-3">
@@ -140,7 +147,7 @@ export default function() {
                     </ItemField>
                     <ItemField className="flex items-center space-x-1">
                         <span>Joined</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" className="h-4 w-4" viewBox="0 0 16 16"><path fill="#A8A29E" fill-rule="evenodd" d="M13.366 8.234a.8.8 0 010 1.132l-4.8 4.8a.8.8 0 01-1.132 0l-4.8-4.8a.8.8 0 111.132-1.132L7.2 11.67V2.4a.8.8 0 111.6 0v9.269l3.434-3.435a.8.8 0 011.132 0z" clip-rule="evenodd"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" className="h-4 w-4" viewBox="0 0 16 16"><path fill="#A8A29E" fill-rule="evenodd" d="M13.366 8.234a.8.8 0 010 1.132l-4.8 4.8a.8.8 0 01-1.132 0l-4.8-4.8a.8.8 0 111.132-1.132L7.2 11.67V2.4a.8.8 0 111.6 0v9.269l3.434-3.435a.8.8 0 011.132 0z" clip-rule="evenodd" /></svg>
                     </ItemField>
                     <ItemField className="flex items-center">
                         <span className="flex-grow">Role</span>

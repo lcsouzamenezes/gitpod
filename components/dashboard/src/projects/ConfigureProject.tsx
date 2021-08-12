@@ -117,7 +117,7 @@ export default function () {
       setEditorMessage(<EditorMessage type="warning" heading="Project type could not be detected." message="You can edit project configuration below before running a prebuild."/>);
       setGitpodYml(TASKS.Other);
     })();
-  }, [ teams, team ]);
+  }, [teams, team]);
 
   const buildProject = async (event: React.MouseEvent) => {
     if (!project) {
