@@ -212,12 +212,15 @@ function App() {
                 </Route>
                 {(teams || []).map(team => <Route path={`/${team.slug}`}>
                     <Route exact path={`/${team.slug}`}>
-                        <Redirect to={`/${team.slug}/projects`} />
+                        <Redirect to={`/${team.slug}/workspaces`} />
                     </Route>
                     <Route exact path={`/${team.slug}/:maybeProject/:resourceOrPrebuild?`} render={(props) => {
                         const { maybeProject, resourceOrPrebuild } = props.match.params;
                         if (maybeProject === "projects") {
                             return <Projects />;
+                        }
+                        if (maybeProject === "workspaces") {
+                            return <Workspaces />;
                         }
                         if (maybeProject === "members") {
                             return <Members />;

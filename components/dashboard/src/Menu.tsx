@@ -101,6 +101,10 @@ export default function Menu() {
                 {
                     title: 'Projects',
                     link: `/${team.slug}/projects`,
+                },
+                {
+                    title: 'Workspaces',
+                    link: `/${team.slug}/workspaces`,
                     alternatives: [`/${team.slug}`]
                 },
                 {

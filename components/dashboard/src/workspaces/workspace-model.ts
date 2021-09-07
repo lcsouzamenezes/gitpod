@@ -23,27 +23,34 @@ export class WorkspaceModel implements Disposable, Partial<GitpodClient> {
         this.internalRefetch();
     }
 
-    constructor(protected setWorkspaces: (ws: WorkspaceInfo[]) => void) {
+    constructor(protected setWorkspaces: (ws: WorkspaceInfo[]) => void,
+            protected projectIds: Promise<string[]>,
+            protected includeWithoutProject?: boolean) {
         this.internalRefetch();
     }
 
-    protected internalRefetch() {
+    protected async internalRefetch(): Promise<void> {
         this.disposables.dispose();
         this.disposables = new DisposableCollection();
-        getGitpodService().server.getWorkspaces({
-            limit: this.internalLimit
-        }).then( infos => {
-            this.updateMap(infos);
-            // Additional fetch pinned workspaces
-            // see also: https://github.com/gitpod-io/gitpod/issues/4488
+        const [infos, pinned] = await Promise.all([
+            getGitpodService().server.getWorkspaces({
+                limit: this.internalLimit,
+                projectId: await this.projectIds,
+                includeWithoutProject: !!this.includeWithoutProject
+            }),
             getGitpodService().server.getWorkspaces({
                 limit: this.internalLimit,
                 pinnedOnly: true,
-            }).then(infos => {
-                this.updateMap(infos);
-                this.notifyWorkpaces();
-            });
-        });
+                projectId: await this.projectIds,
+                includeWithoutProject: !!this.includeWithoutProject
+            })
+        ]);
+
+        this.updateMap(infos);
+        // Additional fetch pinned workspaces
+        // see also: https://github.com/gitpod-io/gitpod/issues/4488
+        this.updateMap(pinned);
+        this.notifyWorkpaces();
         this.disposables.push(getGitpodService().registerClient(this));
     }
 

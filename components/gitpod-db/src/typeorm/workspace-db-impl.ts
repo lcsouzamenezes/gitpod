@@ -5,7 +5,7 @@
  */
 
 import { injectable, inject } from "inversify";
-import { Repository, EntityManager, DeepPartial, UpdateQueryBuilder } from "typeorm";
+import { Repository, EntityManager, DeepPartial, UpdateQueryBuilder, Brackets } from "typeorm";
 import { MaybeWorkspace, MaybeWorkspaceInstance, WorkspaceDB, FindWorkspacesOptions, PrebuiltUpdatableAndWorkspace, WorkspaceInstanceSessionWithWorkspace, PrebuildWithWorkspace, WorkspaceAndOwner, WorkspacePortsAuthData, WorkspaceOwnerAndSoftDeleted } from "../workspace-db";
 import { Workspace, WorkspaceInstance, WorkspaceInfo, WorkspaceInstanceUser, WhitelistedRepository, Snapshot, LayoutData, PrebuiltWorkspace, RunningWorkspaceInfo, PrebuiltWorkspaceUpdatable, WorkspaceAndInstance, WorkspaceType, PrebuildInfo } from "@gitpod/gitpod-protocol";
 import { TypeORM } from "./typeorm";
@@ -173,9 +173,24 @@ export abstract class AbstractTypeORMWorkspaceDBImpl implements WorkspaceDB {
             qb.andWhere("ws.pinned = true");
         }
         if (options.projectId) {
-            qb.andWhere('ws.projectId = :projectId', { projectId: options.projectId })
+            const projectIds = typeof options.projectId === 'string' ? [options.projectId] : options.projectId;
+            qb.andWhere(new Brackets(qb => {
+                if (projectIds.length > 0) {
+                    qb.where('ws.projectId = :pid', { pid: projectIds[0] });
+                    for (let i = 1; i < projectIds.length; i++) {
+                        qb.orWhere('ws.projectId = :pid', { pid: projectIds[i] });
+                    }
+                    if (options.includeWithoutProject) {
+                        qb.orWhere("ws.projectId IS NULL");
+                    }
+                } else {
+                    if (options.includeWithoutProject) {
+                        qb.where("ws.projectId IS NULL");
+                    }
+                }
+            }));
         }
-
+        qb.printSql();
         const rawResults = await qb.getMany() as any as (Workspace & { latestInstance?: WorkspaceInstance })[]; // see leftJoinAndMapOne above
         return rawResults.map(r => {
             const workspace = { ...r };
