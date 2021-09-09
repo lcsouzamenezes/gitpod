@@ -11,13 +11,12 @@ import (
 	"testing"
 	"time"
 
+	wsapi "github.com/gitpod-io/gitpod/ws-manager/api"
+	wsmock "github.com/gitpod-io/gitpod/ws-manager/api/mock"
 	"github.com/golang/mock/gomock"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"google.golang.org/grpc"
-
-	wsapi "github.com/gitpod-io/gitpod/ws-manager/api"
-	wsmock "github.com/gitpod-io/gitpod/ws-manager/api/mock"
 )
 
 func TestRemoteInfoProvider(t *testing.T) {
@@ -167,7 +166,7 @@ func TestRemoteInfoProvider(t *testing.T) {
 					if step.Action != nil {
 						act := step.Action(t, prov)
 						if diff := cmp.Diff(step.Expectation, act, cmpopts.IgnoreUnexported(wsapi.PortSpec{}, wsapi.WorkspaceAuthentication{})); diff != "" {
-							t.Errorf("Expectation mismatch (-want +got):\n%s", diff)
+							t.Errorf("%s Expectation mismatch (-want +got):\n%s", t.Name(), diff)
 						}
 					}
 				})
@@ -175,6 +174,758 @@ func TestRemoteInfoProvider(t *testing.T) {
 		})
 	}
 
+}
+
+func Test_workspaceInfoCache_Insert(t *testing.T) {
+	type existing struct {
+		infos              map[string][]*WorkspaceInfo
+		coordsByPublicPort map[string]*WorkspaceCoords
+	}
+	type args struct {
+		newInfo *WorkspaceInfo
+	}
+	type expected struct {
+		info               *WorkspaceInfo
+		coordsByPublicPort map[string]*WorkspaceCoords
+	}
+	tests := []struct {
+		name     string
+		existing existing
+		args     args
+		expected expected
+	}{
+		{
+			name:     "from scratch",
+			existing: existing{},
+			args: args{
+				newInfo: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					InstanceID:    testWorkspaceStatus.Id,
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_UNKNOWN,
+				},
+			},
+			expected: expected{
+				info: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					InstanceID:    testWorkspaceStatus.Id,
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_UNKNOWN,
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "new instance for same workspace should prefer running",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						testWorkspaceInfo,
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				newInfo: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: different ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_UNKNOWN,
+				},
+			},
+			expected: expected{
+				info: testWorkspaceInfo,
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "initializing instance for same workspace should prefer running",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						testWorkspaceInfo,
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				newInfo: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: different ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_INITIALIZING,
+				},
+			},
+			expected: expected{
+				info: testWorkspaceInfo,
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "stopping instance for workspace should be active",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						testWorkspaceInfo,
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				newInfo: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: same ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0000",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_STOPPING,
+				},
+			},
+			expected: expected{
+				info: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: same ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0000",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_STOPPING,
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "update existing instance for same workspace with 2 instances same ports",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						testWorkspaceInfo,
+						&WorkspaceInfo{
+							IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+							Auth:          testWorkspaceStatus.Auth,
+							IDEPublicPort: "443",
+							// NOTE: different ID
+							InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+							Ports: []PortInfo{
+								{
+									PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+									PublicPort: "443",
+								},
+							},
+							URL:         testWorkspaceStatus.Spec.Url,
+							WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+							Phase:       wsapi.WorkspacePhase_UNKNOWN,
+						},
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				newInfo: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: different ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_RUNNING,
+				},
+			},
+			expected: expected{
+				info: testWorkspaceInfo,
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "update existing instance for same workspace with 2 instances different ports",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						testWorkspaceInfo,
+						&WorkspaceInfo{
+							IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+							Auth:          testWorkspaceStatus.Auth,
+							IDEPublicPort: "443",
+							// NOTE: different ID
+							InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+							Ports: []PortInfo{
+								{
+									PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+									PublicPort: "443",
+								},
+							},
+							URL:         testWorkspaceStatus.Spec.Url,
+							WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+							Phase:       wsapi.WorkspacePhase_UNKNOWN,
+						},
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				newInfo: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "444",
+					// NOTE: different ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "444",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_RUNNING,
+				},
+			},
+			expected: expected{
+				info: testWorkspaceInfo,
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+					"444": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "running instance for same workspace takes precedence",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						&WorkspaceInfo{
+							IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+							Auth:          testWorkspaceStatus.Auth,
+							IDEPublicPort: "443",
+							// NOTE: different ID
+							InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+							Ports: []PortInfo{
+								{
+									PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+									PublicPort: "443",
+								},
+							},
+							URL:         testWorkspaceStatus.Spec.Url,
+							WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+							Phase:       wsapi.WorkspacePhase_INITIALIZING,
+						},
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				newInfo: testWorkspaceInfo,
+			},
+			expected: expected{
+				info: testWorkspaceInfo,
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "running instance for same workspace takes precedence over stopping/stopped",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						&WorkspaceInfo{
+							IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+							Auth:          testWorkspaceStatus.Auth,
+							IDEPublicPort: "443",
+							// NOTE: different ID
+							InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+							Ports: []PortInfo{
+								{
+									PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+									PublicPort: "443",
+								},
+							},
+							URL:         testWorkspaceStatus.Spec.Url,
+							WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+							Phase:       wsapi.WorkspacePhase_STOPPING,
+						},
+					},
+					testWorkspaceInfo.WorkspaceID: {
+						&WorkspaceInfo{
+							IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+							Auth:          testWorkspaceStatus.Auth,
+							IDEPublicPort: "443",
+							// NOTE: different ID
+							InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0002",
+							Ports: []PortInfo{
+								{
+									PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+									PublicPort: "443",
+								},
+							},
+							URL:         testWorkspaceStatus.Spec.Url,
+							WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+							Phase:       wsapi.WorkspacePhase_STOPPED,
+						},
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				newInfo: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: different ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0003",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_RUNNING,
+				},
+			},
+			expected: expected{
+				info: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: different ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0003",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_RUNNING,
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "interrupted instance for same workspace takes precedence over stopping/stopped",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						&WorkspaceInfo{
+							IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+							Auth:          testWorkspaceStatus.Auth,
+							IDEPublicPort: "443",
+							// NOTE: different ID
+							InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+							Ports: []PortInfo{
+								{
+									PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+									PublicPort: "443",
+								},
+							},
+							URL:         testWorkspaceStatus.Spec.Url,
+							WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+							Phase:       wsapi.WorkspacePhase_STOPPING,
+						},
+					},
+					testWorkspaceInfo.WorkspaceID: {
+						&WorkspaceInfo{
+							IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+							Auth:          testWorkspaceStatus.Auth,
+							IDEPublicPort: "443",
+							// NOTE: different ID
+							InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0002",
+							Ports: []PortInfo{
+								{
+									PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+									PublicPort: "443",
+								},
+							},
+							URL:         testWorkspaceStatus.Spec.Url,
+							WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+							Phase:       wsapi.WorkspacePhase_STOPPED,
+						},
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				newInfo: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: different ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0003",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_INTERRUPTED,
+				},
+			},
+			expected: expected{
+				info: &WorkspaceInfo{
+					IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+					Auth:          testWorkspaceStatus.Auth,
+					IDEPublicPort: "443",
+					// NOTE: different ID
+					InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0003",
+					Ports: []PortInfo{
+						{
+							PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+							PublicPort: "443",
+						},
+					},
+					URL:         testWorkspaceStatus.Spec.Url,
+					WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+					Phase:       wsapi.WorkspacePhase_INTERRUPTED,
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			act := newWorkspaceInfoCache()
+			if tt.existing.infos != nil {
+				act.infos = tt.existing.infos
+			}
+			if tt.existing.coordsByPublicPort != nil {
+				act.coordsByPublicPort = tt.existing.coordsByPublicPort
+			}
+			act.Insert(tt.args.newInfo)
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			info, present := act.WaitFor(ctx, tt.args.newInfo.WorkspaceID)
+			if tt.expected.info != nil && !present {
+				t.Errorf("%s expected info result but not present:\n", t.Name())
+			}
+			if tt.expected.info == nil && present {
+				t.Errorf("%s expected no info result but %v was present:\n", t.Name(), info)
+			}
+			if diff := cmp.Diff(tt.expected.info, info, cmpopts.IgnoreUnexported(wsapi.PortSpec{}, wsapi.WorkspaceAuthentication{})); diff != "" {
+				t.Errorf("%s Infos expectation mismatch (-want +got):\n%s", t.Name(), diff)
+			}
+			for port, expCoords := range tt.expected.coordsByPublicPort {
+				coords, present := act.GetCoordsByPublicPort(port)
+				if !present {
+					t.Errorf("%s expected coords result but not present:\n", t.Name())
+				}
+				if diff := cmp.Diff(expCoords, coords, cmpopts.IgnoreUnexported(wsapi.PortSpec{}, wsapi.WorkspaceAuthentication{})); diff != "" {
+					t.Errorf("%s coords expectation mismatch (-want +got):\n%s", t.Name(), diff)
+				}
+			}
+		})
+	}
+}
+
+func Test_workspaceInfoCache_Delete(t *testing.T) {
+	type existing struct {
+		infos              map[string][]*WorkspaceInfo
+		coordsByPublicPort map[string]*WorkspaceCoords
+	}
+	type args struct {
+		workspaceID string
+		instanceID  string
+	}
+	type expected struct {
+		info               *WorkspaceInfo
+		coordsByPublicPort map[string]*WorkspaceCoords
+	}
+	tests := []struct {
+		name     string
+		existing existing
+		args     args
+		expected expected
+	}{
+		{
+			name: "deletes existing",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						testWorkspaceInfo,
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				workspaceID: testWorkspaceInfo.WorkspaceID,
+				instanceID:  testWorkspaceInfo.InstanceID,
+			},
+		},
+
+		{
+			name: "ignores delete of non-existing",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						testWorkspaceInfo,
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				workspaceID: testWorkspaceInfo.WorkspaceID,
+				instanceID:  "non-existing",
+			},
+			expected: expected{
+				info: testWorkspaceInfo,
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+
+		{
+			name: "only deletes specific instance",
+			existing: existing{
+				infos: map[string][]*WorkspaceInfo{
+					testWorkspaceInfo.WorkspaceID: {
+						testWorkspaceInfo,
+						&WorkspaceInfo{
+							IDEImage:      testWorkspaceStatus.Spec.IdeImage,
+							Auth:          testWorkspaceStatus.Auth,
+							IDEPublicPort: "443",
+							// NOTE: different ID
+							InstanceID: "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+							Ports: []PortInfo{
+								{
+									PortSpec:   *testWorkspaceStatus.Spec.ExposedPorts[0],
+									PublicPort: "443",
+								},
+							},
+							URL:         testWorkspaceStatus.Spec.Url,
+							WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+							Phase:       wsapi.WorkspacePhase_UNKNOWN,
+						},
+					},
+				},
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+			args: args{
+				workspaceID: testWorkspaceInfo.WorkspaceID,
+				instanceID:  "e63cb5ff-f4e4-4065-8554-b431a32c0001",
+			},
+			expected: expected{
+				info: testWorkspaceInfo,
+				coordsByPublicPort: map[string]*WorkspaceCoords{
+					"443": {
+						ID:   testWorkspaceStatus.Metadata.MetaId,
+						Port: "8080",
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			act := newWorkspaceInfoCache()
+			if tt.existing.infos != nil {
+				act.infos = tt.existing.infos
+			}
+			if tt.existing.coordsByPublicPort != nil {
+				act.coordsByPublicPort = tt.existing.coordsByPublicPort
+			}
+			act.Delete(tt.args.workspaceID, tt.args.instanceID)
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			info, present := act.WaitFor(ctx, tt.args.workspaceID)
+			if tt.expected.info != nil && !present {
+				t.Errorf("%s expected info result but not present:\n", t.Name())
+			}
+			if tt.expected.info == nil && present {
+				t.Errorf("%s expected no info result but %v was present:\n", t.Name(), info)
+			}
+			if diff := cmp.Diff(tt.expected.info, info, cmpopts.IgnoreUnexported(wsapi.PortSpec{}, wsapi.WorkspaceAuthentication{})); diff != "" {
+				t.Errorf("%s Infos expectation mismatch (-want +got):\n%s", t.Name(), diff)
+			}
+			// We have to look inside the black box for this
+			if tt.expected.coordsByPublicPort == nil && len(act.coordsByPublicPort) != 0 {
+				t.Errorf("%s coords should be empty got%#v\n", t.Name(), act.coordsByPublicPort)
+			}
+			for port, expCoords := range tt.expected.coordsByPublicPort {
+				coords, present := act.GetCoordsByPublicPort(port)
+				if !present {
+					t.Errorf("%s expected coords result but not present:\n", t.Name())
+				}
+				if diff := cmp.Diff(expCoords, coords, cmpopts.IgnoreUnexported(wsapi.PortSpec{}, wsapi.WorkspaceAuthentication{})); diff != "" {
+					t.Errorf("%s coords expectation mismatch (-want +got):\n%s", t.Name(), diff)
+				}
+			}
+		})
+	}
 }
 
 var (
@@ -216,5 +967,6 @@ var (
 		},
 		URL:         testWorkspaceStatus.Spec.Url,
 		WorkspaceID: testWorkspaceStatus.Metadata.MetaId,
+		Phase:       wsapi.WorkspacePhase_RUNNING,
 	}
 )
