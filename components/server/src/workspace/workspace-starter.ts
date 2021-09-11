@@ -605,6 +605,11 @@ export class WorkspaceStarter {
         vsxRegistryUrl.setValue(this.config.vsxRegistryUrl);
         envvars.push(vsxRegistryUrl);
 
+        const ideaIUURL = new EnvironmentVariable();
+        vsxRegistryUrl.setName("IDEA_IU_URL");
+        vsxRegistryUrl.setValue(this.config.ideaIUURL);
+        envvars.push(ideaIUURL);
+
         const createGitpodTokenPromise = (async () => {
             const scopes = this.createDefaultGitpodAPITokenScopes(workspace, instance);
             const token = crypto.randomBytes(30).toString('hex');

@@ -77,5 +77,6 @@ data:
         {{- end }}
         "enablePayment": {{ $comp.enablePayment }},
         "insecureNoDomain": {{ $comp.insecureNoDomain }},
-        "chargebeeProviderOptionsFile": {{ $comp.chargebeeProviderOptionsFile | quote }}
+        "chargebeeProviderOptionsFile": {{ $comp.chargebeeProviderOptionsFile | quote }},
+        "ideaIUURL": {{ .Values.components.workspace.ideaImage.ideaIUURL | quote }}
     }

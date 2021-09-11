@@ -400,7 +400,8 @@ components:
       imageName: "ide/code"
       stableVersion: "commit-2f069ca3b646ab8099c05f7efd181004c08e95cb"
     ideaImage:
-      imageName: "idea-code-with-me"
+      imageName: "ide/idea-code-with-me"
+      ideaIUURL: not-set
     supervisor:
       imageName: "supervisor"
     dockerUp:

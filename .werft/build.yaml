@@ -19,6 +19,9 @@ pod:
   - name: payment-webhook-secret
     secret:
       secretName: payment-webhook-secret
+  - name: jetbrains-download-urls
+    secret:
+      secretName: jetbrains-download-urls
   - name: go-build-cache
     hostPath:
       path: /mnt/disks/ssd0/go-build-cache
@@ -61,6 +64,9 @@ pod:
       readOnly: true
     - name: payment-provider-secret
       mountPath: /mnt/secrets/payment-provider-config
+      readOnly: true
+    - name: jetbrains-download-urls
+      mountPath: /mnt/secrets/jetbrains-download-urls
       readOnly: true
     - name: go-build-cache
       mountPath: /go-build-cache
