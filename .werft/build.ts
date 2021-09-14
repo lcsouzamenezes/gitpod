@@ -10,6 +10,7 @@ import * as util from 'util';
 import { sleep } from './util/util';
 import * as gpctl from './util/gpctl';
 import { createHash } from "crypto";
+import { InstallMonitoringSatelliteParams, installMonitoringSatellite } from './util/observability';
 
 const readDir = util.promisify(fs.readdir)
 
@@ -330,8 +331,11 @@ export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceF
             await issueK3sWsCerts(k3sWsProxyIP);
             await installWsCertificates();
         }
-
         werft.done('certificate');
+
+        werft.log(`observability`, "Installing monitoring-satellite...")
+        await installMonitoring();
+        werft.done('observability');
 
         werft.done('prep');
     } catch (err) {
@@ -533,6 +537,14 @@ export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceF
         await installCertficate(werft, wsInstallCertParams);
     }
 
+    async function installMonitoring() {
+        const installMonitoringSatelliteParams = new InstallMonitoringSatelliteParams();
+        installMonitoringSatelliteParams.pathToKubeConfig = ""
+        installMonitoringSatelliteParams.satelliteNamespace = namespace
+        installMonitoringSatelliteParams.clusterName = namespace
+        await installMonitoringSatellite(installMonitoringSatelliteParams);
+    }
+
 
     async function issueMetaCerts() {
         let additionalSubdomains: string[] = ["", "*.", "*.ws-dev."]
@@ -668,3 +680,4 @@ async function publishHelmChart(imageRepoBase, version) {
         exec(cmd, { slice: 'publish-charts' });
     });
 }
+

@@ -21,6 +21,35 @@ resource "google_dns_record_set" "gitpod" {
   project      = var.project
 }
 
+resource "google_dns_record_set" "grafana" {
+  count        = length(var.subdomains)
+  name         = "grafana-${var.subdomains[count.index]}${var.domain}."
+  type         = "A"
+  ttl          = 300
+  managed_zone = local.dns_zone_name
+  rrdatas      = [var.public_ip]
+  project      = var.project
+}
+
+resource "google_dns_record_set" "prometheus" {
+  count        = length(var.subdomains)
+  name         = "prometheus-${var.subdomains[count.index]}${var.domain}."
+  type         = "A"
+  ttl          = 300
+  managed_zone = local.dns_zone_name
+  rrdatas      = [var.public_ip]
+  project      = var.project
+}
+
+resource "google_dns_record_set" "alertmanager" {
+  count        = length(var.subdomains)
+  name         = "alertmanager-${var.subdomains[count.index]}${var.domain}."
+  type         = "A"
+  ttl          = 300
+  managed_zone = local.dns_zone_name
+  rrdatas      = [var.public_ip]
+  project      = var.project
+}
 
 #
 # Certificate
