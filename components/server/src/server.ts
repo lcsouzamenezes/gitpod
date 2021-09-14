@@ -41,6 +41,7 @@ import { OAuthController } from './oauth-server/oauth-controller';
 import { HeadlessLogController, HEADLESS_LOGS_PATH_PREFIX, HEADLESS_LOG_DOWNLOAD_PATH_PREFIX } from './workspace/headless-log-controller';
 import { NewsletterSubscriptionController } from './user/newsletter-subscription-controller';
 import { Config } from './config';
+import { DebugApp } from './debug-app';
 
 @injectable()
 export class Server<C extends GitpodClient, S extends GitpodServer> {
@@ -57,6 +58,7 @@ export class Server<C extends GitpodClient, S extends GitpodServer> {
     @inject(MonitoringEndpointsApp) protected readonly monitoringEndpointsApp: MonitoringEndpointsApp;
     @inject(CodeSyncService) private readonly codeSyncService: CodeSyncService;
     @inject(HeadlessLogController) protected readonly headlessLogController: HeadlessLogController;
+    @inject(DebugApp) protected readonly debugApp: DebugApp;
 
     @inject(RabbitMQConsensusLeaderMessenger) protected readonly consensusMessenger: RabbitMQConsensusLeaderMessenger;
     @inject(ConsensusLeaderQorum) protected readonly qorum: ConsensusLeaderQorum;
@@ -75,8 +77,8 @@ export class Server<C extends GitpodClient, S extends GitpodServer> {
     protected readonly eventEmitter = new EventEmitter();
     protected app?: express.Application;
     protected httpServer?: http.Server;
-    protected monApp?: express.Application;
-    protected monHttpServer?: http.Server;
+    protected monitoringApp?: express.Application;
+    protected monitoringHttpServer?: http.Server;
 
     public async init(app: express.Application) {
         log.info('Initializing');
@@ -234,7 +236,7 @@ export class Server<C extends GitpodClient, S extends GitpodServer> {
 
 
         // Health check + metrics endpoints
-        this.monApp = this.monitoringEndpointsApp.create();
+        this.monitoringApp = this.monitoringEndpointsApp.create();
 
         // Report current websocket connections
         this.installWebsocketConnectionGauge();
@@ -301,15 +303,19 @@ export class Server<C extends GitpodClient, S extends GitpodServer> {
             log.info(`Server listening on port: ${(<AddressInfo>httpServer.address()).port}`);
         })
         this.httpServer = httpServer;
-        if (this.monApp) {
-            this.monHttpServer = this.monApp.listen(9500, 'localhost', () => {
-                log.info(`Monitoring server listening on port: ${(<AddressInfo>this.monHttpServer!.address()).port}`);
+
+        if (this.monitoringApp) {
+            this.monitoringHttpServer = this.monitoringApp.listen(9500, 'localhost', () => {
+                log.info(`Monitoring server listening on port: ${(<AddressInfo>this.monitoringHttpServer!.address()).port}`);
             });
         }
+
+        this.debugApp.start(6060);
     }
 
     public async stop() {
-        await this.stopServer(this.monHttpServer);
+        await this.debugApp.stop();
+        await this.stopServer(this.monitoringHttpServer);
         await this.stopServer(this.httpServer);
         log.info('Stopped');
     }

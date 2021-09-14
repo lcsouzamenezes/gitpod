@@ -81,6 +81,7 @@ import { NewsletterSubscriptionController } from './user/newsletter-subscription
 import { Config, ConfigFile } from './config';
 import { defaultGRPCOptions } from '@gitpod/gitpod-protocol/lib/util/grpc';
 import { IDEConfigService } from './ide-config';
+import { DebugApp } from './debug-app';
 
 export const productionContainerModule = new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(Config).toConstantValue(ConfigFile.fromFile());
@@ -101,6 +102,7 @@ export const productionContainerModule = new ContainerModule((bind, unbind, isBo
 
     bind(SessionHandlerProvider).toSelf().inSingletonScope();
     bind(Server).toSelf().inSingletonScope();
+    bind(DebugApp).toSelf().inSingletonScope();
 
     bind(GitpodFileParser).toSelf().inSingletonScope();
 
