@@ -4,6 +4,9 @@ pod:
   nodeSelector:
     cloud.google.com/gke-nodepool: builds
   volumes:
+  - name: gitpod-bot-github-token
+    secret:
+      secretName: gitpod-bot-github-token
   - name: gcp-sa
     secret:
       secretName: gcp-sa-gitpod-dev-deployer
@@ -47,6 +50,8 @@ pod:
     workingDir: /workspace
     imagePullPolicy: Always
     volumeMounts:
+    - name: gitpod-bot-github-token
+      mountPath: /mnt/secrets/gitpod-bot-github-token
     - name: gcp-sa
       mountPath: /mnt/secrets/gcp-sa
       readOnly: true
