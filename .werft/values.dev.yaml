@@ -139,18 +139,6 @@ components:
       # in preview envs, we want deployments to push scale-up early
       memory: 350Mi
 
-  imageBuilder:
-    hostDindData: "/mnt/disks/ssd0/builder"
-    # configure GCP registry
-    registry:
-      name: eu.gcr.io/gitpod-core-dev/registry
-      secretName: gcp-sa-registry-auth
-      path: gcp-sa-registry-auth
-    registryCerts: []
-    resources:
-      # in preview envs, we want deployments to push scale-up early
-      memory: 350Mi
-
   wsDaemon:
     hostWorkspaceArea: /mnt/disks/ssd0/workspaces
     disableKubeHealthMonitor: true
