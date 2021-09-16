@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,6 +49,8 @@ func NewComponentAPI(ctx context.Context, namespace string, client klient.Client
 		namespace: namespace,
 		client:    client,
 
+		closerMutex: sync.Mutex{},
+
 		serverStatus: &serverStatus{
 			Client: make(map[string]*gitpod.APIoverJSONRPC),
 			Token:  make(map[string]string),
@@ -67,7 +70,8 @@ type ComponentAPI struct {
 	namespace string
 	client    klient.Client
 
-	closer []func() error
+	closer      []func() error
+	closerMutex sync.Mutex
 
 	serverStatus *serverStatus
 
@@ -120,14 +124,14 @@ func (c *ComponentAPI) Supervisor(instanceID string) (grpc.ClientConnInterface, 
 		return nil, err
 	case <-ready:
 	}
-	c.closer = append(c.closer, func() error { cancel(); return nil })
+	c.appendCloser(func() error { cancel(); return nil })
 
 	conn, err := grpc.Dial(fmt.Sprintf("localhost:%d", localPort), grpc.WithInsecure())
 	if err != nil {
 		return nil, err
 	}
 
-	c.closer = append(c.closer, conn.Close)
+	c.appendCloser(conn.Close)
 	return conn, nil
 }
 
@@ -208,7 +212,7 @@ func (c *ComponentAPI) GitpodServer(opts ...GitpodServerOpt) (gitpod.APIInterfac
 
 		c.serverStatus.Client[options.User] = cl
 		res = cl
-		c.closer = append(c.closer, cl.Close)
+		c.appendCloser(cl.Close)
 
 		return nil
 	}()
@@ -267,7 +271,7 @@ func (c *ComponentAPI) createGitpodToken(user string) (tkn string, err error) {
 		return "", err
 	}
 
-	c.closer = append(c.closer, func() error {
+	c.appendCloser(func() error {
 		_, err := db.Exec("DELETE FROM d_b_gitpod_token WHERE tokenHash = ?", hashVal)
 		return err
 	})
@@ -300,14 +304,14 @@ func (c *ComponentAPI) WorkspaceManager() (wsmanapi.WorkspaceManagerClient, erro
 			return nil, err
 		case <-ready:
 		}
-		c.closer = append(c.closer, func() error { cancel(); return nil })
+		c.appendCloser(func() error { cancel(); return nil })
 		c.wsmanStatus.Port = localPort
 	}
 
 	secretName := "ws-manager-client-tls"
 	ctx, cancel := context.WithCancel(context.Background())
 
-	c.closer = append(c.closer, func() error { cancel(); return nil })
+	c.appendCloser(func() error { cancel(); return nil })
 
 	var secret corev1.Secret
 	err := c.client.Resources().Get(ctx, secretName, c.namespace, &secret)
@@ -339,7 +343,7 @@ func (c *ComponentAPI) WorkspaceManager() (wsmanapi.WorkspaceManagerClient, erro
 	if err != nil {
 		return nil, err
 	}
-	c.closer = append(c.closer, conn.Close)
+	c.appendCloser(conn.Close)
 
 	c.wsmanStatus.Client = wsmanapi.NewWorkspaceManagerClient(conn)
 	return c.wsmanStatus.Client, nil
@@ -370,7 +374,7 @@ func (c *ComponentAPI) BlobService() (csapi.BlobServiceClient, error) {
 			return nil, err
 		case <-ready:
 		}
-		c.closer = append(c.closer, func() error { cancel(); return nil })
+		c.appendCloser(func() error { cancel(); return nil })
 		c.contentServiceStatus.Port = localPort
 	}
 
@@ -378,7 +382,7 @@ func (c *ComponentAPI) BlobService() (csapi.BlobServiceClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.closer = append(c.closer, conn.Close)
+	c.appendCloser(conn.Close)
 
 	c.contentServiceStatus.BlobServiceClient = csapi.NewBlobServiceClient(conn)
 	return c.contentServiceStatus.BlobServiceClient, nil
@@ -402,7 +406,7 @@ func (c *ComponentAPI) DB() (*sql.DB, error) {
 			return nil, err
 		case <-ready:
 		}
-		c.closer = append(c.closer, func() error { cancel(); return nil })
+		c.appendCloser(func() error { cancel(); return nil })
 	}
 
 	db, err := sql.Open("mysql", fmt.Sprintf("gitpod:%s@tcp(%s:%d)/gitpod", config.Password, config.Host, config.Port))
@@ -410,7 +414,7 @@ func (c *ComponentAPI) DB() (*sql.DB, error) {
 		return nil, err
 	}
 
-	c.closer = append(c.closer, db.Close)
+	c.appendCloser(db.Close)
 	return db, nil
 }
 func (c *ComponentAPI) findDBConfig() (*DBConfig, error) {
@@ -584,7 +588,7 @@ func (c *ComponentAPI) ImageBuilder(opts ...APIImageBuilderOpt) (imgbldr.ImageBu
 				return err
 			case <-ready:
 			}
-			c.closer = append(c.closer, func() error { cancel(); return nil })
+			c.appendCloser(func() error { cancel(); return nil })
 			c.imgbldStatus.Port = localPort
 		}
 
@@ -592,7 +596,7 @@ func (c *ComponentAPI) ImageBuilder(opts ...APIImageBuilderOpt) (imgbldr.ImageBu
 		if err != nil {
 			return err
 		}
-		c.closer = append(c.closer, conn.Close)
+		c.appendCloser(conn.Close)
 
 		c.imgbldStatus.Client = imgbldr.NewImageBuilderClient(conn)
 		return nil
@@ -633,7 +637,7 @@ func (c *ComponentAPI) ContentService() (ContentService, error) {
 			return nil, err
 		case <-ready:
 		}
-		c.closer = append(c.closer, func() error { cancel(); return nil })
+		c.appendCloser(func() error { cancel(); return nil })
 		c.contentServiceStatus.Port = localPort
 	}
 
@@ -641,7 +645,7 @@ func (c *ComponentAPI) ContentService() (ContentService, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.closer = append(c.closer, conn.Close)
+	c.appendCloser(conn.Close)
 
 	type cs struct {
 		csapi.ContentServiceClient
@@ -666,4 +670,10 @@ func (c *ComponentAPI) Done(t *testing.T) {
 			t.Logf("cleanup failed: %q", err)
 		}
 	}
+}
+
+func (c *ComponentAPI) appendCloser(closer func() error) {
+	c.closerMutex.Lock()
+	defer c.closerMutex.Unlock()
+	c.closer = append(c.closer, closer)
 }
