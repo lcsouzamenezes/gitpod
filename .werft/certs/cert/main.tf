@@ -41,16 +41,6 @@ resource "google_dns_record_set" "prometheus" {
   project      = var.project
 }
 
-resource "google_dns_record_set" "alertmanager" {
-  count        = length(var.subdomains)
-  name         = "alertmanager-${var.subdomains[count.index]}${var.domain}."
-  type         = "A"
-  ttl          = 300
-  managed_zone = local.dns_zone_name
-  rrdatas      = [var.public_ip]
-  project      = var.project
-}
-
 #
 # Certificate
 # This part implicitly relies on certmanager being installed on the same cluster!

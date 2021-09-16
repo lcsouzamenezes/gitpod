@@ -267,9 +267,10 @@ interface DeploymentConfig {
 export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceFeatureFlags: string[], dynamicCPULimits, storage) {
     werft.phase("deploy", "deploying to dev");
     const { version, destname, namespace, domain, url, k3sWsCluster } = deploymentConfig;
-    const [wsdaemonPortMeta, registryNodePortMeta] = findFreeHostPorts("", [
+    const [wsdaemonPortMeta, registryNodePortMeta, nodeExporterPort] = findFreeHostPorts("", [
         { start: 10000, end: 11000 },
         { start: 30000, end: 31000 },
+        { start: 31001, end: 32000 },
     ], 'hostports');
     const [wsdaemonPortK3sWs, registryNodePortK3sWs] = !k3sWsCluster ? [0, 0] : findFreeHostPorts(getK3sWsKubeConfigPath(), [
         { start: 10000, end: 11000 },
@@ -335,6 +336,8 @@ export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceF
 
         werft.log(`observability`, "Installing monitoring-satellite...")
         await installMonitoring();
+        exec(`werft log result -d "Grafana dashboards" -c github url https://grafana-${domain}/dashboards`);
+        exec(`werft log result -d "Prometheus" -c github url https://prometheus-${domain}/graph`);
         werft.done('observability');
 
         werft.done('prep');
@@ -542,6 +545,9 @@ export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceF
         installMonitoringSatelliteParams.pathToKubeConfig = ""
         installMonitoringSatelliteParams.satelliteNamespace = namespace
         installMonitoringSatelliteParams.clusterName = namespace
+        installMonitoringSatelliteParams.nodeExporterPort = nodeExporterPort
+        installMonitoringSatelliteParams.version = 'arthursens/make-the-stack-compatible-262'
+        installMonitoringSatelliteParams.previewDomain = domain
         await installMonitoringSatellite(installMonitoringSatelliteParams);
     }
 
