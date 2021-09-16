@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	common_grpc "github.com/gitpod-io/gitpod/common-go/grpc"
@@ -223,12 +224,19 @@ func (m *Manager) StartWorkspace(ctx context.Context, req *api.StartWorkspaceReq
 		},
 	}
 
-	err = m.Clientset.Create(ctx, &theiaService)
+	var errorFn = func(err error) bool {
+		return strings.Contains(err.Error(), "object is being deleted")
+	}
+
+	err = retry.OnError(retry.DefaultBackoff, errorFn, func() error {
+		return m.Clientset.Create(ctx, &theiaService)
+	})
 	if err != nil {
 		clog.WithError(err).WithField("req", req).Error("was unable to start workspace")
 		// could not create Theia service
 		return nil, xerrors.Errorf("cannot create workspace's Theia service: %w", err)
 	}
+
 	span.LogKV("event", "theia service created")
 
 	// if we have ports configured already, create the ports service

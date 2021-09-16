@@ -2,7 +2,7 @@
 // Licensed under the GNU Affero General Public License (AGPL).
 // See License-AGPL.txt in the project root for license information.
 
-package workspace_test
+package workspace
 
 import (
 	"context"
@@ -10,7 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/features"
+
 	"github.com/gitpod-io/gitpod/test/pkg/integration"
+	test_context "github.com/gitpod-io/gitpod/test/pkg/integration/context"
 	"github.com/gitpod-io/gitpod/test/tests/workspace/common"
 )
 
@@ -88,50 +92,76 @@ func TestGitLabContexts(t *testing.T) {
 }
 
 func runContextTests(t *testing.T, tests []ContextTest) {
-	for _, test := range tests {
-		t.Run(test.ContextURL, func(t *testing.T) {
-			if test.Skip {
-				t.SkipNow()
+	contextFeat := features.New("context").
+		WithLabel("component", "server").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			api := integration.NewComponentAPI(ctx, cfg.Namespace(), cfg.Client())
+			return test_context.SetComponentAPI(ctx, api)
+		}).
+		Assess("should run context tests", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			defer cancel()
+
+			api := test_context.GetComponentAPI(ctx)
+
+			for _, test := range tests {
+				t.Run(test.ContextURL, func(t *testing.T) {
+					if test.Skip {
+						t.SkipNow()
+					}
+					// TODO(geropl) Why does this not work? Logs hint to a race around bucket creation...?
+					// t.Parallel()
+
+					username := ctx.Value("username").(string)
+
+					if username == "" && test.ExpectedBranchFunc != nil {
+						t.Logf("skipping '%s' because there is not username configured", test.Name)
+						t.SkipNow()
+					}
+
+					nfo, stopWS, err := integration.LaunchWorkspaceFromContextURL(ctx, test.ContextURL, api)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer stopWS(false) // we do not wait for stopped here as it does not matter for this test case and speeds things up
+
+					_, err = integration.WaitForWorkspaceStart(ctx, nfo.LatestInstance.ID, api)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					rsa, closer, err := integration.Instrument(integration.ComponentWorkspace, "workspace", cfg.Namespace(), cfg.Client(), integration.WithInstanceID(nfo.LatestInstance.ID))
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer rsa.Close()
+					defer integration.RunCloser(t, closer)
+
+					// get actual from workspace
+					git := common.Git(rsa)
+					actBranch, err := git.GetBranch(test.WorkspaceRoot)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					expectedBranch := test.ExpectedBranch
+					if test.ExpectedBranchFunc != nil {
+						expectedBranch = test.ExpectedBranchFunc(username)
+					}
+					if actBranch != expectedBranch {
+						t.Fatalf("expected branch '%s', got '%s'!", test.ExpectedBranch, actBranch)
+					}
+				})
 			}
-			// TODO(geropl) Why does this not work? Logs hint to a race around bucket creation...?
-			// t.Parallel()
+			return ctx
+		}).
+		Teardown(func(ctx context.Context, t *testing.T, _ *envconf.Config) context.Context {
+			api := test_context.GetComponentAPI(ctx)
+			defer api.Done(t)
 
-			it, ctx := integration.NewTest(t, 5*time.Minute)
-			defer it.Done()
+			return ctx
+		}).
+		Feature()
 
-			if it.Username() == "" && test.ExpectedBranchFunc != nil {
-				t.Logf("skipping '%s' because there is not username configured", test.Name)
-				t.SkipNow()
-			}
-
-			nfo, stopWS := integration.LaunchWorkspaceFromContextURL(it, test.ContextURL)
-			defer stopWS(false) // we do not wait for stopped here as it does not matter for this test case and speeds things up
-
-			wctx, wcancel := context.WithTimeout(ctx, 1*time.Minute)
-			defer wcancel()
-			it.WaitForWorkspaceStart(wctx, nfo.LatestInstance.ID)
-
-			rsa, err := it.Instrument(integration.ComponentWorkspace, "workspace", integration.WithInstanceID(nfo.LatestInstance.ID))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer rsa.Close()
-
-			// get actual from workspace
-			git := common.Git(rsa)
-			actBranch, err := git.GetBranch(test.WorkspaceRoot)
-			if err != nil {
-				t.Fatal(err)
-			}
-			rsa.Close()
-
-			expectedBranch := test.ExpectedBranch
-			if test.ExpectedBranchFunc != nil {
-				expectedBranch = test.ExpectedBranchFunc(it.Username())
-			}
-			if actBranch != expectedBranch {
-				t.Fatalf("expected branch '%s', got '%s'!", test.ExpectedBranch, actBranch)
-			}
-		})
-	}
+	testEnv.Test(t, contextFeat)
 }

@@ -2,7 +2,7 @@
 // Licensed under the GNU Affero General Public License (AGPL).
 // See License-AGPL.txt in the project root for license information.
 
-package workspace
+package database
 
 import (
 	"context"
@@ -13,41 +13,43 @@ import (
 
 	"github.com/gitpod-io/gitpod/test/pkg/integration"
 	test_context "github.com/gitpod-io/gitpod/test/pkg/integration/context"
-	wsmanapi "github.com/gitpod-io/gitpod/ws-manager/api"
 )
 
-func TestGhostWorkspace(t *testing.T) {
-	ghostWorkspace := features.New("ghost").
-		WithLabel("component", "ws-manager").
+func TestBuiltinUserExists(t *testing.T) {
+	builtinUser := features.New("database").
+		WithLabel("component", "database").
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			api := integration.NewComponentAPI(ctx, cfg.Namespace(), cfg.Client())
 			return test_context.SetComponentAPI(ctx, api)
 		}).
-		Assess("it can start a ghost workspace", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("it should exists a builtin user workspace", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			api := test_context.GetComponentAPI(ctx)
 
-			// there's nothing specific about ghost that we want to test beyond that they start properly
-			ws, err := integration.LaunchWorkspaceDirectly(ctx, api, integration.WithRequestModifier(func(req *wsmanapi.StartWorkspaceRequest) error {
-				req.Type = wsmanapi.WorkspaceType_GHOST
-				req.Spec.Envvars = append(req.Spec.Envvars, &wsmanapi.EnvironmentVariable{
-					Name:  "GITPOD_TASKS",
-					Value: `[{ "init": "echo \"some output\" > someFile; sleep 20; exit 0;" }]`,
-				})
-				return nil
-			}))
+			db, err := api.DB()
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			_, err = integration.WaitForWorkspaceStart(ctx, ws.Req.Id, api)
+			rows, err := db.Query(`SELECT count(1) AS count FROM d_b_user WHERE id ="builtin-user-workspace-probe-0000000"`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+
+			if !rows.Next() {
+				t.Fatal("no rows selected - should not happen")
+			}
+
+			var count int
+			err = rows.Scan(&count)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			err = integration.DeleteWorkspace(ctx, api, ws.Req.Id)
-			if err != nil {
-				t.Fatal(err)
+			if count != 1 {
+				t.Fatalf("expected a single builtin-user-workspace-probe-0000000, but found %d", count)
 			}
+
 			return ctx
 		}).
 		Teardown(func(ctx context.Context, t *testing.T, _ *envconf.Config) context.Context {
@@ -58,5 +60,5 @@ func TestGhostWorkspace(t *testing.T) {
 		}).
 		Feature()
 
-	testEnv.Test(t, ghostWorkspace)
+	testEnv.Test(t, builtinUser)
 }
