@@ -288,10 +288,10 @@ sysctl -w vm.unprivileged_userfaultfd=0
 								InitialDelaySeconds: 5,
 								PeriodSeconds:       10,
 							},
-							ImagePullPolicy: corev1.PullPolicy("Always"),
+							ImagePullPolicy: corev1.PullAlways,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: pointer.Bool(true),
-								ProcMount:  valast.Addr(corev1.ProcMountType("Default")).(*corev1.ProcMountType),
+								ProcMount:  valast.Addr(corev1.DefaultProcMount).(*corev1.ProcMountType),
 							},
 						},
 						*common.KubeRBACProxyContainer(),
