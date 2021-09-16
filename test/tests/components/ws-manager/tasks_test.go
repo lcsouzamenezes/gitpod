@@ -57,7 +57,7 @@ func TestRegularWorkspaceTasks(t *testing.T) {
 
 			for _, test := range tests {
 				t.Run(test.Name, func(t *testing.T) {
-					t.Parallel()
+					// t.Parallel()
 
 					addInitTask := func(swr *wsmanapi.StartWorkspaceRequest) error {
 						tasks, err := json.Marshal([]gitpod.TasksItems{test.Task})

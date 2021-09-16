@@ -51,6 +51,10 @@ func NewComponentAPI(ctx context.Context, namespace string, client klient.Client
 
 		closerMutex: sync.Mutex{},
 
+		wsmanStatusMu:          sync.Mutex{},
+		contentServiceStatusMu: sync.Mutex{},
+		imgbldStatusMu:         sync.Mutex{},
+
 		serverStatus: &serverStatus{
 			Client: make(map[string]*gitpod.APIoverJSONRPC),
 			Token:  make(map[string]string),
@@ -88,6 +92,10 @@ type ComponentAPI struct {
 		Port   int
 		Client imgbldr.ImageBuilderClient
 	}
+
+	wsmanStatusMu          sync.Mutex
+	contentServiceStatusMu sync.Mutex
+	imgbldStatusMu         sync.Mutex
 }
 
 type DBConfig struct {
@@ -286,6 +294,9 @@ func (c *ComponentAPI) WorkspaceManager() (wsmanapi.WorkspaceManagerClient, erro
 	}
 
 	if c.wsmanStatus.Port == 0 {
+		c.wsmanStatusMu.Lock()
+		defer c.wsmanStatusMu.Unlock()
+
 		pod, _, err := selectPod(ComponentWorkspaceManager, selectPodOptions{}, c.namespace, c.client)
 		if err != nil {
 			return nil, err
@@ -356,6 +367,9 @@ func (c *ComponentAPI) BlobService() (csapi.BlobServiceClient, error) {
 	}
 
 	if c.contentServiceStatus.Port == 0 {
+		c.contentServiceStatusMu.Lock()
+		defer c.contentServiceStatusMu.Unlock()
+
 		pod, _, err := selectPod(ComponentContentService, selectPodOptions{}, c.namespace, c.client)
 		if err != nil {
 			return nil, err
@@ -566,6 +580,9 @@ func (c *ComponentAPI) ImageBuilder(opts ...APIImageBuilderOpt) (imgbldr.ImageBu
 
 	err := func() error {
 		if c.imgbldStatus.Port == 0 {
+			c.imgbldStatusMu.Lock()
+			defer c.imgbldStatusMu.Unlock()
+
 			cmp := ComponentImageBuilder
 			if cfg.SelectMK3 {
 				cmp = ComponentImageBuilderMK3
