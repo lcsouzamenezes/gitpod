@@ -6,6 +6,7 @@ package components
 
 import (
 	"github.com/gitpod-io/gitpod/installer/pkg/common"
+	agentsmith "github.com/gitpod-io/gitpod/installer/pkg/components/agent-smith"
 	registryfacade "github.com/gitpod-io/gitpod/installer/pkg/components/registry-facade"
 	wsdaemon "github.com/gitpod-io/gitpod/installer/pkg/components/ws-daemon"
 	wsmanager "github.com/gitpod-io/gitpod/installer/pkg/components/ws-manager"
@@ -16,6 +17,7 @@ import (
 var MetaObjects = common.CompositeRenderFunc()
 
 var WorkspaceObjects = common.CompositeRenderFunc(
+	agentsmith.Objects,
 	wsdaemon.Objects,
 	wsmanager.Objects,
 	wsproxy.Objects,

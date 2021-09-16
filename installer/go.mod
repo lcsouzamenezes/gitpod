@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/docker/distribution v2.7.1+incompatible
+	github.com/gitpod-io/gitpod/agent-smith v0.0.0-00010101000000-000000000000
 	github.com/gitpod-io/gitpod/blobserve v0.0.0-00010101000000-000000000000
 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
 	github.com/gitpod-io/gitpod/content-service/api v0.0.0-00010101000000-000000000000
@@ -24,6 +25,10 @@ require (
 	k8s.io/utils v0.0.0-20210820185131-d34e5cb4466e
 	sigs.k8s.io/yaml v1.2.0
 )
+
+replace github.com/gitpod-io/gitpod/agent-smith => ../components/ee/agent-smith // leeway
+
+replace github.com/gitpod-io/gitpod/gitpod-protocol => ../components/gitpod-protocol/go // leeway
 
 replace github.com/gitpod-io/gitpod/blobserve => ../components/blobserve // leeway
 
