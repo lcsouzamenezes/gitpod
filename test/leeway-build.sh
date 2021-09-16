@@ -7,11 +7,16 @@ export CGO_ENABLED=0
 
 mkdir -p bin
 
-# shellcheck disable=SC2044
-for i in pkg/agent/*; do
-    echo building agent "$i"
-    base=$(basename "$i")
-    go build -trimpath -ldflags="-buildid= -w -s" -o bin/gitpod-integration-test-"${base%_agent}"-agent ./pkg/agent/"$i"
+for AGENT in pkg/agent/*; do
+    echo building agent "$AGENT"
+    base=$(basename "$AGENT")
+    go build -trimpath -ldflags="-buildid= -w -s" -o bin/gitpod-integration-test-"${base%_agent}"-agent ./"$AGENT"
 done
 
-go test -trimpath -ldflags="-buildid= -w -s" -c -o bin/integration.test .
+for COMPONENT in tests/components/*; do
+    echo building test "$COMPONENT"
+    OUTPUT=$(basename "$COMPONENT")
+    go test -trimpath -ldflags="-buildid= -w -s" -c -o bin/"$OUTPUT" ./"$COMPONENT"
+done
+
+go test -trimpath -ldflags="-buildid= -w -s" -o bin/workspace -c ./tests/workspace
