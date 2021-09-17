@@ -341,8 +341,8 @@ export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceF
 
         werft.log(`observability`, "Installing monitoring-satellite...")
         await installMonitoring();
-        exec(`werft log result -d "Grafana dashboards" -c github url http://grafana-${monitoringDomain}:3000/dashboards`);
-        exec(`werft log result -d "Prometheus" -c github url http://prometheus-${monitoringDomain}:9090/graph`);
+        exec(`werft log result -d "Monitoring Satellite - Grafana" -c github url https://grafana-${monitoringDomain}/dashboards`);
+        exec(`werft log result -d "Monitoring Satellite - Prometheus" -c github url https://prometheus-${monitoringDomain}/graph`);
         werft.done('observability');
 
         werft.done('prep');

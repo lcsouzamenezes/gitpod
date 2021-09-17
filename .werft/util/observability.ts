@@ -31,7 +31,6 @@ export async function installMonitoringSatellite(params: InstallMonitoringSatell
     --ext-str node_exporter_port="${params.nodeExporterPort}" \
     --ext-str prometheus_dns_name="prometheus-${params.previewDomain}" \
     --ext-str grafana_dns_name="grafana-${params.previewDomain}" \
-    --ext-str dns_name="" \
     monitoring-satellite/manifests/yaml-generator.jsonnet | xargs -I{} sh -c 'cat {} | gojsontoyaml > {}.yaml' -- {} && \
     find monitoring-satellite/manifests -type f ! -name '*.yaml' ! -name '*.jsonnet'  -delete`
 
