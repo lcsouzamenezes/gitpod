@@ -229,12 +229,16 @@ export async function build(context, version) {
     const destname = version.split(".")[0];
     const namespace = `staging-${destname}`;
     const domain = `${destname}.staging.gitpod-dev.com`;
+    // Monitoring-satellite is using external-dns, configured with a different domain.
+    // More info can be found at: https://github.com/gitpod-io/ops/blob/main/deploy/core-dev/primary-full/external-dns.tf
+    const monitoringDomain = `${destname}.preview.gitpod-dev.com`;
     const url = `https://${domain}`;
     const deploymentConfig = {
         version,
         destname,
         namespace,
         domain,
+        monitoringDomain,
         url,
         analytics,
         cleanSlateDeployment,
@@ -252,6 +256,7 @@ interface DeploymentConfig {
     destname: string;
     namespace: string;
     domain: string;
+    monitoringDomain: string;
     url: string;
     k3sWsCluster?: boolean;
     analytics?: string;
@@ -266,7 +271,7 @@ interface DeploymentConfig {
  */
 export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceFeatureFlags: string[], dynamicCPULimits, storage) {
     werft.phase("deploy", "deploying to dev");
-    const { version, destname, namespace, domain, url, k3sWsCluster } = deploymentConfig;
+    const { version, destname, namespace, domain, monitoringDomain, url, k3sWsCluster } = deploymentConfig;
     const [wsdaemonPortMeta, registryNodePortMeta, nodeExporterPort] = findFreeHostPorts("", [
         { start: 10000, end: 11000 },
         { start: 30000, end: 31000 },
@@ -336,8 +341,8 @@ export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceF
 
         werft.log(`observability`, "Installing monitoring-satellite...")
         await installMonitoring();
-        exec(`werft log result -d "Grafana dashboards" -c github url https://grafana-${domain}/dashboards`);
-        exec(`werft log result -d "Prometheus" -c github url https://prometheus-${domain}/graph`);
+        exec(`werft log result -d "Grafana dashboards" -c github url http://grafana-${monitoringDomain}:3000/dashboards`);
+        exec(`werft log result -d "Prometheus" -c github url http://prometheus-${monitoringDomain}:9090/graph`);
         werft.done('observability');
 
         werft.done('prep');
@@ -547,7 +552,7 @@ export async function deployToDev(deploymentConfig: DeploymentConfig, workspaceF
         installMonitoringSatelliteParams.clusterName = namespace
         installMonitoringSatelliteParams.nodeExporterPort = nodeExporterPort
         installMonitoringSatelliteParams.version = 'arthursens/make-the-stack-compatible-262'
-        installMonitoringSatelliteParams.previewDomain = domain
+        installMonitoringSatelliteParams.previewDomain = monitoringDomain
         await installMonitoringSatellite(installMonitoringSatelliteParams);
     }
 
