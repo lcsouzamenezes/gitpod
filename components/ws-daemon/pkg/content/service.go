@@ -328,23 +328,7 @@ func (s *WorkspaceService) DisposeWorkspace(ctx context.Context, req *api.Dispos
 	}
 
 	if req.Backup {
-		if sess.RemoteStorageDisabled {
-			return nil, status.Errorf(codes.FailedPrecondition, "workspace has no remote storage")
-		}
-
-		var (
-			backupName = storage.DefaultBackup
-			mfName     = storage.DefaultBackupManifest
-		)
-		if sess.FullWorkspaceBackup {
-			backupName = fmt.Sprintf(storage.FmtFullWorkspaceBackup, time.Now().UnixNano())
-		}
-
-		err = s.uploadWorkspaceContent(ctx, sess, backupName, mfName)
-		if err != nil {
-			log.WithError(err).WithFields(sess.OWI()).Error("final backup failed")
-			return nil, status.Error(codes.DataLoss, "final backup failed")
-		}
+		_, err = s.backupWorkspace(ctx, sess)
 	}
 
 	// Update the git status prior to deleting the workspace
@@ -707,6 +691,51 @@ func (s *WorkspaceService) TakeSnapshot(ctx context.Context, req *api.TakeSnapsh
 	return &api.TakeSnapshotResponse{
 		Url: snapshotName,
 	}, nil
+}
+
+// BackupWorkspace creates a backup of a workspace
+func (s *WorkspaceService) BackupWorkspace(ctx context.Context, req *api.BackupWorkspaceRequest) (res *api.BackupWorkspaceResponse, err error) {
+	//nolint:ineffassign
+	span, ctx := opentracing.StartSpanFromContext(ctx, "BackupWorkspace")
+	span.SetTag("workspace", req.Id)
+	defer tracing.FinishSpan(span, &err)
+
+	sess := s.store.Get(req.Id)
+	if sess == nil {
+		return nil, status.Error(codes.NotFound, "workspace does not exist")
+	}
+	backupName, err := s.backupWorkspace(ctx, sess)
+	if err != nil {
+		log.WithError(err).WithField("workspaceId", req.Id).Error("backup upload failed")
+		return nil, status.Error(codes.Internal, "cannot perform backup")
+	}
+
+	return &api.BackupWorkspaceResponse{
+		Url: backupName,
+	}, nil
+}
+
+func (s *WorkspaceService) backupWorkspace(ctx context.Context, sess *session.Workspace) (backupName string, err error) {
+	if !sess.IsReady() {
+		return "", status.Error(codes.FailedPrecondition, "workspace is not ready")
+	}
+	if sess.RemoteStorageDisabled {
+		return "", status.Errorf(codes.FailedPrecondition, "workspace has no remote storage")
+	}
+
+	backupName = storage.DefaultBackup
+	var mfName = storage.DefaultBackupManifest
+	if sess.FullWorkspaceBackup {
+		backupName = fmt.Sprintf(storage.FmtFullWorkspaceBackup, time.Now().UnixNano())
+	}
+
+	err = s.uploadWorkspaceContent(ctx, sess, backupName, mfName)
+	if err != nil {
+		log.WithError(err).WithFields(sess.OWI()).Error("final backup failed")
+		return "", status.Error(codes.DataLoss, "final backup failed")
+	}
+
+	return backupName, nil
 }
 
 // Close ends this service and its housekeeping

@@ -1232,3 +1232,47 @@ func newWssyncConnectionFactory(managerConfig config.Configuration) (grpcpool.Fa
 		return conn, nil
 	}, nil
 }
+
+// BackupWorkspace creates a copy of the workspace content and stores it so that another workspace can be created from it.
+func (m *Manager) BackupWorkspace(ctx context.Context, req *api.BackupWorkspaceRequest) (res *api.BackupWorkspaceResponse, err error) {
+	span, ctx := tracing.FromContext(ctx, "BackupWorkspace")
+	tracing.ApplyOWI(span, log.OWI("", "", req.Id))
+	defer tracing.FinishSpan(span, &err)
+
+	pod, err := m.findWorkspacePod(ctx, req.Id)
+	if isKubernetesObjNotFoundError(err) {
+		return nil, status.Errorf(codes.NotFound, "workspace %s does not exist", req.Id)
+	}
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "cannot get workspace status: %q", err)
+	}
+	tracing.ApplyOWI(span, wsk8s.GetOWIFromObject(&pod.ObjectMeta))
+	span.LogKV("event", "get pod")
+
+	wso, err := m.getWorkspaceObjects(ctx, pod)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "cannot get workspace status: %q", err)
+	}
+
+	sts, err := m.getWorkspaceStatus(*wso)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "cannot get workspace status: %q", err)
+	}
+
+	if sts.Phase != api.WorkspacePhase_RUNNING {
+		return nil, status.Errorf(codes.FailedPrecondition, "can only take backups of running workspaces")
+	}
+
+	sync, err := m.connectToWorkspaceDaemon(ctx, workspaceObjects{Pod: pod})
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "cannot connect to workspace daemon: %q", err)
+	}
+
+	r, err := sync.BackupWorkspace(ctx, &wsdaemon.BackupWorkspaceRequest{Id: req.Id})
+	if err != nil {
+		// err is already a grpc error - no need to faff with that
+		return nil, err
+	}
+
+	return &api.BackupWorkspaceResponse{Url: r.Url}, nil
+}

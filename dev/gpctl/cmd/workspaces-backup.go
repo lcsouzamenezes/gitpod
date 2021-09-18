@@ -11,12 +11,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/gitpod-io/gitpod/common-go/log"
+	"github.com/gitpod-io/gitpod/ws-manager/api"
 )
 
 // workspacesBackupCmd represents the backup command
 var workspacesBackupCmd = &cobra.Command{
 	Use:   "backup <workspaceID>",
-	Short: "backup a workspace",
+	Short: "takes a backup of a workspace",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -38,14 +39,12 @@ var workspacesBackupCmd = &cobra.Command{
 		}
 
 		log.WithField("instance id", instanceID).Debug("starting workspace backup")
-		var resp interface{}
-		// resp, err := client.BackupWorkspace(ctx, &api.BackupWorkspaceRequest{
-		// 	Id:     instanceID,
-		// 	Policy: policy,
-		// })
-		// if err != nil {
-		// 	log.WithError(err).Fatal("error during RPC call")
-		// }
+		resp, err := client.BackupWorkspace(ctx, &api.BackupWorkspaceRequest{
+			Id: instanceID,
+		})
+		if err != nil {
+			log.WithError(err).Fatal("error during RPC call")
+		}
 
 		err = getOutputFormat("backing up\n", "").Print(resp)
 		if err != nil {
