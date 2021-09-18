@@ -11,6 +11,7 @@ import (
 	"golang.org/x/xerrors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
+	"k8s.io/apimachinery/pkg/api/errors"
 )
 
 var (
@@ -27,13 +28,16 @@ type Pool struct {
 	factory     Factory
 	closed      bool
 	mu          sync.RWMutex
+
+	checkFn func(string) error
 }
 
 // New creates a new connection pool
-func New(factory Factory) *Pool {
+func New(factory Factory, checkFn func(string) error) *Pool {
 	return &Pool{
 		connections: make(map[string]*grpc.ClientConn),
 		factory:     factory,
+		checkFn:     checkFn,
 	}
 }
 
@@ -97,4 +101,26 @@ func (p *Pool) Close() error {
 	}
 
 	return nil
+}
+
+// ValidateConnections check if existing connections in the pool
+// are using valid addresses and remove them from the pool if not.
+func (p *Pool) ValidateConnections() {
+	p.mu.RLock()
+	addresses := make([]string, 0, len(p.connections))
+	for address := range p.connections {
+		addresses = append(addresses, address)
+	}
+	p.mu.RUnlock()
+
+	for _, address := range addresses {
+		err := p.checkFn(address)
+		if errors.IsNotFound(err) {
+			p.mu.Lock()
+			conn := p.connections[address]
+			conn.Close()
+			delete(p.connections, address)
+			p.mu.Unlock()
+		}
+	}
 }

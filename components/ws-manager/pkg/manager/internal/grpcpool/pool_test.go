@@ -74,7 +74,9 @@ func TestFirstGet(t *testing.T) {
 	}
 	defer stopServer(stopTest)
 
-	pool := grpcpool.New(getFactory(address))
+	checkFn := func(string) error { return nil }
+
+	pool := grpcpool.New(getFactory(address), checkFn)
 
 	conn, err := pool.Get("foo")
 	if err != nil {
@@ -108,7 +110,9 @@ func TestGetShutDown(t *testing.T) {
 	}
 	defer stopServer(stopTest)
 
-	pool := grpcpool.New(getFactory(address))
+	checkFn := func(string) error { return nil }
+
+	pool := grpcpool.New(getFactory(address), checkFn)
 
 	conn, err := pool.Get("foo")
 	if err != nil {
@@ -143,7 +147,9 @@ func TestClosed(t *testing.T) {
 	}
 	defer stopServer(stopTest)
 
-	pool := grpcpool.New(getFactory(address))
+	checkFn := func(string) error { return nil }
+
+	pool := grpcpool.New(getFactory(address), checkFn)
 
 	conn, err := pool.Get("foo")
 	if conn == nil || err != nil {
@@ -167,4 +173,36 @@ func TestClosed(t *testing.T) {
 	if conn != nil {
 		t.Errorf("Get returned a connection even though pool was closed")
 	}
+}
+
+func TestValidateConnections(t *testing.T) {
+	address := getTestAddr()
+	stopTest := make(chan struct{}, 1)
+	err := startServer(address, stopTest)
+	if err != nil {
+		t.Skipf("cannot start server: %v", err)
+		return
+	}
+	defer stopServer(stopTest)
+
+	checkFn := func(checkAddress string) error {
+		if address != checkAddress {
+			t.Errorf("check address is invalid, expected %v, but returned %v", address, checkAddress)
+		}
+
+		return nil
+	}
+
+	pool := grpcpool.New(getFactory(address), checkFn)
+
+	conn, err := pool.Get(address)
+	if err != nil {
+		t.Errorf("Get returned error when it shouldn't have: %v", err)
+		return
+	}
+	if conn == nil {
+		t.Errorf("Get returned conn == nil")
+	}
+
+	pool.ValidateConnections()
 }

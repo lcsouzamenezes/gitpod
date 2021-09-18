@@ -429,7 +429,7 @@ func TestConnectToWorkspaceDaemon(t *testing.T) {
 		// Add dummy daemon pool - slightly hacky but we aren't testing the actual connectivity here
 		manager.wsdaemonPool = grpcpool.New(func(host string) (*grpc.ClientConn, error) {
 			return nil, nil
-		})
+		}, func(checkAddress string) error { return nil })
 
 		t.Run(tt.Name, func(t *testing.T) {
 			got, err := manager.connectToWorkspaceDaemon(tt.Args.Ctx, tt.Args.WSO)

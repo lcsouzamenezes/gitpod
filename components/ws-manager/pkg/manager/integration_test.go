@@ -344,7 +344,7 @@ func (test *SingleWorkspaceIntegrationTest) Run(t *testing.T) {
 		test.MockWsdaemon(t, s)
 		ctx := test.WsdaemonConnectionContext()
 		return connectToMockWsdaemon(ctx, s)
-	})
+	}, func(checkAddress string) error { return nil })
 
 	monitor, err := manager.CreateMonitor()
 	if err != nil {
